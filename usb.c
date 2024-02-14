@@ -29,8 +29,6 @@ static void usb_memset(void *s, int c, int n) {
 }
 
 void usb_rx_init() {
-    print("usb_rx_init\r\n");
-
     if (((unsigned long) &linklist_ram_rx) & 0xFFFFFFFF00000000) {
         // DMA only allows for 32 bit addresses
         print("usb_read: linklist_ram_rx out of range, DMA only allows for 32 bit addresses\r\n");
@@ -80,23 +78,19 @@ void usb_write(const unsigned int *buf, unsigned short len) {
 
     while (!(USB_DMA_CHN_INT(5) & (1 << 18))); // CHN_LLIST_INT_MASK_STS
     USB_DMA_CHN_INT(5) |= 1 << 26; // CHN_LLIST_INT_CLR
-
-    usb_rx_init();
 }
 
 unsigned short usb_read(const unsigned char **buf) {
-    print("usb_read\r\n");
     if (((unsigned long) usb_in_ep_buf) & 0xFFFFFFFF00000000) {
         // DMA only allows for 32 bit addresses
         print("usb_read: usb_in_ep_buf out of range, DMA only allows for 32 bit addresses\r\n");
         return 0;
     }
 
-    print("usb_read: usb_in_ep_buf is in range\r\n");
     while (!(USB_DMA_CHN_INT(6 + 15) & (1 << 18))); // CHN_LLIST_INT_MASK_STS
     USB_DMA_CHN_INT(6 + 15) |= 1 << 28 | 1 << 26; // UNKNOWN | CHN_LLIST_INT_CLR
 
-    print("usb_read: DMA complete\r\n");
+    print("Computer says: ");
     print(usb_in_ep_buf);
     unsigned short len = (USB_DMA_CHN_LEN(6 + 15) >> 16) & 0xFFFF;
 

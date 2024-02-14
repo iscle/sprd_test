@@ -27,6 +27,7 @@ void main() {
 		print(text);
         usb_write((unsigned int *) text, sizeof(text));
         unsigned short received = usb_read(&receive_buffer);
+        // For some reason, adding the following code crashes the entire program (not even the first "print" statement in the loop is reached)
 //        if (received > 0) {
 //            print("Received data\r\n");
 //        } else {
