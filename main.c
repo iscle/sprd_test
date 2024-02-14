@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "usb.h"
+#include "emmc.h"
 
 #define REG32(x) (*(volatile unsigned int *) (x))
 
@@ -19,20 +20,26 @@ void print(const char *s) {
 }
 
 void main() {
-    char text[] = "Hello, World!\r\n";
-    const uint8_t *receive_buffer;
+//    char text[] = "Hello, World!\r\n";
+//    const uint8_t *receive_buffer;
 
-    usb_rx_init();
+    print("Calling emmc_init\r\n");
+    emmc_init();
+    print("emmc_init returned\r\n");
 
-    while (1) {
-        print(text);
-        usb_write((uint32_t *) text, sizeof(text));
-        uint16_t received = usb_read(&receive_buffer);
-        // For some reason, adding the following code crashes the entire program (not even the first "print" statement in the loop is reached)
-//        if (received > 0) {
-//            print("Received data\r\n");
-//        } else {
-//            print("No data received\r\n");
-//        }
-    }
+    while (1);
+
+//    usb_rx_init();
+//
+//    while (1) {
+//        print(text);
+//        usb_write((uint32_t *) text, sizeof(text));
+//        uint16_t received = usb_read(&receive_buffer);
+//        // For some reason, adding the following code crashes the entire program (not even the first "print" statement in the loop is reached)
+////        if (received > 0) {
+////            print("Received data\r\n");
+////        } else {
+////            print("No data received\r\n");
+////        }
+//    }
 }
