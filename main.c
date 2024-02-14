@@ -6,13 +6,6 @@
 #define UART1_TX_BUF_ADDR	(UART1_BASE)
 #define UART1_TX_BUF_CNT	((REG32(UART1_BASE + 0xC) >> 8) & 0xff)
 
-// https://linux-sunxi.org/images/7/73/Musbmhdrc.pdf
-#define USB_BASE	(0x5FFF0000)
-#define USB_FIFOx(x) (USB_BASE + 0x20 + ((x) * 0x4))
-#define USB_TXCSRLx(x)	(USB_BASE + 0x102 + ((x) * 0x10))
-
-void print(const char *s);
-
 void print(const char *s) {
     while (*s != '\0') {
         // wait until uart1 tx fifo empty
