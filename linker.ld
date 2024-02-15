@@ -25,13 +25,4 @@ SECTIONS
         . = ALIGN(8);
         _ebss = .; /* End of the .bss section in RAM */
     }
-
-    /DISCARD/ : {
-        *(.comment)
-    }
-    /DISCARD/ : { *(.dynstr*) }
-    /DISCARD/ : { *(.dynamic*) }
-    /DISCARD/ : { *(.plt*) }
-    /DISCARD/ : { *(.interp*) }
-    /DISCARD/ : { *(.gnu*) }
 }

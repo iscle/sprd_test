@@ -37,13 +37,13 @@ void usb_rx_init() {
 
     usb_memset(&linklist_ram_rx, 0, sizeof(linklist_ram_rx));
 
-    linklist_ram_rx.addr = (uint32_t) usb_in_ep_buf;
+    linklist_ram_rx.addr = (uint32_t) (uint64_t) usb_in_ep_buf;
     linklist_ram_rx.frag_len = 32;
     linklist_ram_rx.blk_len = MAX_RECV_LEN;
     linklist_ram_rx.flags = (1 << 2) | 1; // ioc << 2 | sp << 1 | list_end << 0
 
     USB_DMA_CHN_INT(6 + 15) |= 1 << 4 | 1 << 2; // UNKNOWN | CHN_LLIST_INT_EN
-    USB_DMA_CHN_LLIST_PTR(6 + 15) = (uint32_t) &linklist_ram_rx;
+    USB_DMA_CHN_LLIST_PTR(6 + 15) = (uint32_t) (uint64_t) &linklist_ram_rx;
     USB_DMA_CHN_CFG(6 + 15) |= 1; // CHN_EN
 }
 
@@ -67,13 +67,13 @@ void usb_write(const uint32_t *buf, uint16_t len) {
 
     usb_memset(&linklist_ram_tx, 0, sizeof(linklist_ram_tx));
 
-    linklist_ram_tx.addr = (uint32_t) buf;
+    linklist_ram_tx.addr = (uint32_t) (uint64_t) buf;
     linklist_ram_tx.frag_len = 32;
     linklist_ram_tx.blk_len = len;
     linklist_ram_tx.flags = (1 << 2) | 1; // ioc << 2 | sp << 1 | list_end << 0
 
     USB_DMA_CHN_INT(5) |= 1 << 2; // CHN_LLIST_INT_EN
-    USB_DMA_CHN_LLIST_PTR(5) = (uint32_t) &linklist_ram_tx;
+    USB_DMA_CHN_LLIST_PTR(5) = (uint32_t) (uint64_t) &linklist_ram_tx;
     USB_DMA_CHN_CFG(5) |= 1; // CHN_EN
 
     while (!(USB_DMA_CHN_INT(5) & (1 << 18))); // CHN_LLIST_INT_MASK_STS

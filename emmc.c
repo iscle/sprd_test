@@ -1,4 +1,7 @@
 #include "emmc.h"
+#include <stddef.h>
+
+extern void print(const char *s);
 
 #define EMMC_BASE                   (0x71400000)
 
@@ -60,24 +63,153 @@
 #define CTL_BASE_AP_CLK_CORE            (0x20200000)
 #define REG_AP_CLK_CORE_CGM_EMMC_2X_CFG (*(volatile uint32_t *) (CTL_BASE_AP_CLK_CORE + 0x90))
 
-int emmc_init() {
+#define BOOT_ACK                    (1 << 31)
+#define CMD_LINE_BOOT               (1 << 30)
+#define CMD_INDEX(x)                (((x) & 0x3F) << 24)
+#define CMD_TYPE_NORMAL             (0 << 22)
+#define CMD_TYPE_ABORT              (3 << 22)
+#define DATA_PRE_SEL                (1 << 21)
+#define CMD_IND_CHK_EN              (1 << 20)
+#define CMD_CRC_CHK_EN              (1 << 19)
+#define SUB_CMD_FLAG_MAIN           (0 << 18)
+#define SUB_CMD_FLAG_SUB            (1 << 18)
+#define RESP_TYPE_SEL_NO_RESPONSE   (0 << 16)
+#define RESP_TYPE_SEL_136           (1 << 16)
+#define RESP_TYPE_SEL_48            (2 << 16)
+#define RESP_TYPE_SEL_48_CHECK      (3 << 16)
+#define RESP_INT_DIS                (1 << 8)
+#define RESP_ERR_CHK_EN             (1 << 7)
+#define RESP_TYPE_R1                (0 << 6)
+#define RESP_TYPE_R5                (1 << 6)
+#define MULTI_BLK_SEL               (1 << 5)
+#define DATA_DIR_SEL_WRITE          (0 << 4)
+#define DATA_DIR_SEL_READ           (1 << 4)
+#define AUTO_CMD_EN_DISABLE         (0 << 2)
+#define AUTO_CMD_EN_CMD12           (1 << 2)
+#define AUTO_CMD_EN_CMD23           (2 << 2)
+#define AUTO_CMD_EN_AUTO            (3 << 2)
+
+struct cmd_data_param {
+    uint8_t *data_buf;
+    uint32_t blk_len;
+    uint32_t blk_num;
+};
+
+enum emmc_cmd {
+    GO_IDLE_STATE,
+    SEND_OP_COND,
+};
+
+// Array positions to be kept in sync with enum emmc_cmd
+static uint32_t cmds[] = {
+        // CMD_GO_IDLE_STATE
+        CMD_INDEX(0) | CMD_TYPE_NORMAL | RESP_TYPE_SEL_NO_RESPONSE,
+        // CMD_SEND_OP_COND
+        CMD_INDEX(1) | CMD_TYPE_NORMAL | RESP_TYPE_SEL_48
+};
+
+void emmc_sdclk_enable(uint8_t enable) {
+    if (enable) {
+        EMMC_CLK_CTRL |= 1 << 2; // SDCLK_EN
+    } else {
+        EMMC_CLK_CTRL &= ~(1 << 2); // SDCLK_EN
+    }
+}
+
+static inline void emmc_set_data_timeout(uint8_t timeout) {
+    // Save original data timeout interrupt
+    uint32_t tmp = EMMC_INT_ST_EN;
+    // Disable data timeout interrupt
+    EMMC_INT_ST_EN &= ~(1 << 20); // DATA_TIMEOUT_ERR_EN
+    // Set timeout
+    EMMC_CLK_CTRL &= ~(0xF << 16); // DATA_TIMEOUT_CNT
+    EMMC_CLK_CTRL |= (timeout & 0xF) << 16; // DATA_TIMEOUT_CNT
+    // Restore data timeout interrupt
+    EMMC_INT_ST_EN = tmp;
+}
+
+static inline void emmc_set_int_en(uint32_t int_en) {
+    EMMC_INT_ST_EN = int_en;
+    EMMC_INT_SIG_EN = int_en;
+}
+
+static inline void emmc_reset_cmd_dat() {
+    EMMC_CLK_CTRL |= (1 << 26) | (1 << 25); // SW_RST_DAT | SW_RST_CMD
+    while (EMMC_CLK_CTRL & ((1 << 26) | (1 << 25))); // SW_RST_DAT | SW_RST_CMD
+}
+
+void emmc_send_cmd(enum emmc_cmd cmd, uint32_t arg, uint8_t *rsp_buf) {
+    print("emmc_send_cmd: emmc_set_data_timeout\r\n");
+    // Set maximum timeout value
+    emmc_set_data_timeout(0xF);
+
+    print("emmc_send_cmd: emmc_set_int_en\r\n");
+    // Enable interrupts
+    emmc_set_int_en((1 << 0)); // CMD_COMPLETE_EN
+
+    EMMC_ARGUMENT = arg;
+    EMMC_TR_MODE = cmds[cmd];
+
+    print("emmc_send_cmd: wait for CMD_COMPLETE\r\n");
+    while (!(EMMC_INT_ST & (1 << 0))); // CMD_COMPLETE
+
+    print("emmc_send_cmd: emmc_reset_cmd_dat\r\n");
+    emmc_reset_cmd_dat();
+
+    if (rsp_buf == NULL)
+        return;
+
+    switch (cmds[cmd] & (0x3 << 16)) {
+        case RESP_TYPE_SEL_NO_RESPONSE:
+            break;
+        case RESP_TYPE_SEL_136:
+            ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
+            ((uint32_t *) rsp_buf)[1] = EMMC_RESP2;
+            ((uint32_t *) rsp_buf)[2] = EMMC_RESP4;
+            ((uint32_t *) rsp_buf)[3] = EMMC_RESP6;
+            break;
+        case RESP_TYPE_SEL_48:
+            ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
+            break;
+        case RESP_TYPE_SEL_48_CHECK:
+            ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
+            break;
+    }
+}
+
+void emmc_send_cmd_data() {
+
+}
+
+void emmc_init() {
+    print("SDHOST_Register start\r\n");
+    // SDHOST_Register start
     REG_AP_APB_APB_EB |= 1 << 25; // BIT_AP_APB_EMMC_EB
 
     if (EMMC_CLK_CTRL & (1 << 2)) { // SDCLK_EN
         EMMC_CLK_CTRL &= ~(1 << 2); // SDCLK_EN
+        // TODO: delay_ms(1);
     }
 
     REG_AP_APB_APB_RST |= 1 << 19; // BIT_AP_APB_EMMC_SOFT_RST
     // TODO: delay_ms(1);
     REG_AP_APB_APB_RST &= ~(1 << 19); // BIT_AP_APB_EMMC_SOFT_RST
+    // SDHOST_Register end
 
+    print("SDIO_PowerCtl start\r\n");
+    // SDIO_PowerCtl start
+    // SDHOST_RST start
     if (EMMC_CLK_CTRL & (1 << 2)) { // SDCLK_EN
         EMMC_CLK_CTRL &= ~(1 << 2); // SDCLK_EN
+        // TODO: delay_ms(1);
     }
 
     EMMC_CLK_CTRL |= 1 << 24; // SW_RST_ALL
     while (EMMC_CLK_CTRL & (1 << 24)); // SW_RST_ALL
+    // SDHOST_RST end
 
+    print("SDHOST_ClkFreq_Set start\r\n");
+    // SDHOST_ClkFreq_Set start
     REG_AP_CLK_CORE_CGM_EMMC_2X_CFG = 0x03; // AP_CLK_FREQ_384M
 
     uint32_t sdioClk = 400000; // 400KHz
@@ -94,12 +226,24 @@ int emmc_init() {
     tmpReg |= (clkDiv & 0xff) << 8;
     EMMC_CLK_CTRL = tmpReg;
 
+    print("SDHOST_InternalClk_Enable start\r\n");
+    // SDHOST_InternalClk_Enable start
     EMMC_CLK_CTRL |= 1; // INT_CLK_EN
     while (!(EMMC_CLK_CTRL & 1)); // INT_CLK_STABLE
+    // SDHOST_InternalClk_Enable end
+    // SDHOST_SdClk_Enable start
     EMMC_CLK_CTRL |= 1 << 2; // SDCLK_EN
+    // SDHOST_SdClk_Enable end
 
+    print("SDIO_Enable64Bit start\r\n");
+    // SDIO_Enable64Bit start
     EMMC_HOST_CTRL2 |= 0x20000000; // EMMC_ENABLE_64BIT
     EMMC_HOST_CTRL1 &= ~(0x18); // EMMC_SDMA_MODE
+    // SDIO_Enable64Bit end
 
-    return 0;
+    print("CARD_SDIO_InitCard start\r\n");
+    // CARD_SDIO_InitCard start
+    emmc_send_cmd(GO_IDLE_STATE, 0, NULL);
+
+    return;
 }
