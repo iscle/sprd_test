@@ -181,6 +181,26 @@ void emmc_send_cmd_data() {
 
 }
 
+static void emmc_set_frequency(uint32_t frequency) {
+    const uint32_t base_clk = 384000000;
+    uint32_t freq_div = 0;
+
+    // base_clk / 2n = freq
+    // 2n = base_clk / freq
+    // n = base_clk / (freq * 2)
+    // base_clk = 384000000
+
+    if (frequency < base_clk) {
+        freq_div = base_clk / (frequency * 2);
+        if ((base_clk / freq_div) > (frequency * 2))
+            freq_div++;
+    }
+
+    EMMC_CLK_CTRL &= ~(0x3FF << 6);
+    EMMC_CLK_CTRL |= ((freq_div >> 8) & 0x3) << 6;
+    EMMC_CLK_CTRL |= (freq_div & 0xFF) << 8;
+}
+
 void emmc_init() {
     print("SDHOST_Register start\r\n");
     // SDHOST_Register start
@@ -212,19 +232,7 @@ void emmc_init() {
     // SDHOST_ClkFreq_Set start
     REG_AP_CLK_CORE_CGM_EMMC_2X_CFG = 0x03; // AP_CLK_FREQ_384M
 
-    uint32_t sdioClk = 400000; // 400KHz
-    uint32_t clkDiv = 384000000 / (sdioClk * 2);
-    if ((384000000 / clkDiv) > (sdioClk * 2))
-        clkDiv++;
-    if (clkDiv % 2)
-        clkDiv = (clkDiv + 1) / 2;
-    else
-        clkDiv = clkDiv / 2;
-    uint32_t tmpReg = EMMC_CLK_CTRL;
-    tmpReg &= (~(0x3ff << 6));
-    tmpReg |= ((clkDiv >> 8) & 0x3) << 6;
-    tmpReg |= (clkDiv & 0xff) << 8;
-    EMMC_CLK_CTRL = tmpReg;
+    emmc_set_frequency(400000);
 
     print("SDHOST_InternalClk_Enable start\r\n");
     // SDHOST_InternalClk_Enable start
@@ -244,6 +252,12 @@ void emmc_init() {
     print("CARD_SDIO_InitCard start\r\n");
     // CARD_SDIO_InitCard start
     emmc_send_cmd(GO_IDLE_STATE, 0, NULL);
+
+    uint8_t op_cond_response[4];
+    do {
+        print("emmc_init: emmc_send_cmd(SEND_OP_COND)\r\n");
+        emmc_send_cmd(SEND_OP_COND, 0x00FF8000 | 0x40000000, op_cond_response); // SECTOR_MODE = 0x40000000
+    } while (!(op_cond_response[0] & (1 << 7)));
 
     return;
 }

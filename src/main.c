@@ -8,14 +8,32 @@
 #define UART1_TX_BUF_ADDR   (UART1_BASE)
 #define UART1_TX_BUF_CNT    ((REG32(UART1_BASE + 0xC) >> 8) & 0xff)
 
+void print_char(char c) {
+    // wait until uart1 tx fifo empty
+    while (UART1_TX_BUF_CNT != 0);
+
+    // put out char by uart1 tx fifo
+    REG32(UART1_TX_BUF_ADDR) = c;
+}
+
+void print_hex(uint32_t hex) {
+    int i;
+    char c;
+    print_char('0');
+    print_char('x');
+    for (i = 28; i >= 0; i -= 4) {
+        c = (hex >> i) & 0xf;
+        if (c < 10) {
+            print_char('0' + c);
+        } else {
+            print_char('A' + c - 10);
+        }
+    }
+}
+
 void print(const char *s) {
     while (*s != '\0') {
-        // wait until uart1 tx fifo empty
-        while (UART1_TX_BUF_CNT != 0);
-
-        // put out char by uart1 tx fifo
-        REG32(UART1_TX_BUF_ADDR) = *s;
-        s++;
+        print_char(*s++);
     }
 }
 

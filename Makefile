@@ -5,13 +5,13 @@ OBJCOPY := aarch64-linux-gnu-objcopy
 DD := dd
 
 # Source and object files
-SOURCES := $(wildcard *.c)
-OBJECTS := $(SOURCES:.c=.o) start.o
+SOURCES := $(wildcard src/*.c)
+OBJECTS := $(SOURCES:.c=.o) src/start.o
 TARGET := app_with_gap.bin
 
 # Flags
 CFLAGS := -c -nostdlib -nostartfiles
-LDFLAGS := -T linker.ld
+LDFLAGS := -T src/linker.ld
 DDFLAGS := if=/dev/zero bs=1 count=512 of=gap.bin
 
 # Default target
@@ -28,8 +28,8 @@ $(TARGET): $(OBJECTS)
 	$(CC) $(CFLAGS) -o $@ $<
 
 # Special rule for start.S
-start.o: start.S
-	$(CC) $(CFLAGS) -o start.o start.S
+start.o: src/start.S
+	$(CC) $(CFLAGS) -o src/start.o src/start.S
 
 # Clean rule
 clean:

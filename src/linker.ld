@@ -4,7 +4,7 @@ SECTIONS
     . = 0x5700;
     . = ALIGN(8);
     .text : {
-        start.o (.text*)
+        src/start.o (.text*)
         *(.text*)
     }
 
