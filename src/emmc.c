@@ -438,12 +438,7 @@ static void emmc_switch(uint8_t index, uint8_t value, uint32_t *rsp_buf) {
     emmc_send_cmd(EMMC_CMD_SWITCH, argument, rsp_buf);
     print_hex(EMMC_PRES_STATE);
     print("\r\n");
-    if (EMMC_PRES_STATE & (1 << 20)) {
-        print("emmc_switch: busy\r\n");
-        // TODO: Handle busy state
-    } else {
-        print("emmc_switch: not busy\r\n");
-    }
+    while (!(EMMC_PRES_STATE & (1 << 20))); // Wait for not busy
 }
 
 static void emmc_set_frequency(uint32_t frequency) {
