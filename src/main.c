@@ -16,6 +16,22 @@ void print_char(char c) {
     REG32(UART1_TX_BUF_ADDR) = c;
 }
 
+void print_dec(uint32_t dec) {
+    char buf[11];
+    int i = 0;
+    if (dec == 0) {
+        print_char('0');
+        return;
+    }
+    while (dec > 0) {
+        buf[i++] = dec % 10 + '0';
+        dec /= 10;
+    }
+    while (i > 0) {
+        print_char(buf[--i]);
+    }
+}
+
 void print_hex(uint32_t hex) {
     int i;
     char c;
