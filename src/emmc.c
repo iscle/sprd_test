@@ -284,6 +284,9 @@ void emmc_send_cmd(emmc_cmd_t cmd, uint32_t argument, uint32_t *rsp_buf) {
 
     // Clear interrupts
     EMMC_INT_ST = 0xFFFFFFFF;
+    print("emmc_send_cmd: EMMC_INT_ST = ");
+    print_hex(EMMC_INT_ST);
+    print("\r\n");
     // Enable interrupts
     EMMC_INT_ST_EN = 0xFFFFFFFF;
     EMMC_INT_SIG_EN = 0xFFFFFFFF;
@@ -435,8 +438,12 @@ static void emmc_switch(uint8_t index, uint8_t value, uint32_t *rsp_buf) {
     emmc_send_cmd(EMMC_CMD_SWITCH, argument, rsp_buf);
     print_hex(EMMC_PRES_STATE);
     print("\r\n");
-//    while (EMMC_PRES_STATE & (1 << 20)); // DAT[0] (busy)
-    print("emmc_switch: not busy\r\n");
+    if (EMMC_PRES_STATE & (1 << 20)) {
+        print("emmc_switch: busy\r\n");
+        // TODO: Handle busy state
+    } else {
+        print("emmc_switch: not busy\r\n");
+    }
 }
 
 static void emmc_set_frequency(uint32_t frequency) {
@@ -527,13 +534,6 @@ void emmc_init() {
     print("\r\nemmc_init: emmc_send_cmd(SEND_EXT_CSD)\r\n");
     uint8_t ext_csd[512];
     emmc_send_cmd_data(EMMC_CMD_SEND_EXT_CSD, 0, ext_csd, 512, 1, NULL);
-
-    print("emmc_init: ext_csd:\r\n");
-    for (int i = 0; i < 512 / 4; i++) {
-        print_hex(((uint32_t *) ext_csd)[i]);
-        print(" ");
-    }
-    print("\r\n");
 
     uint32_t sec_count = ext_csd[212] | (ext_csd[213] << 8) | (ext_csd[214] << 16) | (ext_csd[215] << 24);
     print("emmc_init: sec_count = ");
