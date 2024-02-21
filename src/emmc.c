@@ -340,21 +340,7 @@ int emmc_send_cmd(emmc_cmd_t cmd, uint32_t argument, uint32_t *rsp_buf) {
     print_hex(EMMC_INT_ST);
     print("\r\n");
 
-    print("emmc_send_cmd: emmc_reset_cmd_dat\r\n");
     emmc_reset_cmd_dat();
-
-    print("emmc_send_cmd: EMMC_RESP0 = ");
-    print_hex(EMMC_RESP0);
-    print("\r\n");
-    print("emmc_send_cmd: EMMC_RESP2 = ");
-    print_hex(EMMC_RESP2);
-    print("\r\n");
-    print("emmc_send_cmd: EMMC_RESP4 = ");
-    print_hex(EMMC_RESP4);
-    print("\r\n");
-    print("emmc_send_cmd: EMMC_RESP6 = ");
-    print_hex(EMMC_RESP6);
-    print("\r\n");
 
     if (rsp_buf == NULL)
         return 0;
