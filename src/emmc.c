@@ -1,6 +1,7 @@
 #include "emmc.h"
 #include <stddef.h>
 #include "efi.h"
+#include "timer.h"
 
 #define EMMC_DEBUG
 #ifdef EMMC_DEBUG
@@ -149,6 +150,19 @@ extern void print(const char *s);
 #define TR_COMPLETE_EN      (1 << 1)
 #define CMD_COMPLETE_EN     (1 << 0)
 
+// EMMC_HOST_CTRL2
+#define _64_BIT_ADDR_EN     (1 << 29)
+#define HOST_VER_4_EN       (1 << 28)
+#define CMD23_ENABLE        (1 << 27)
+#define ADMA2_LEN_MODE      (1 << 26)
+//#define UHS_MODE(x)                 (((x) & 0x7) << 16)
+#define CMD_NOT_ISS_ERR     (1 << 7)
+#define ACMD_IDX_ERR        (1 << 4)
+#define ACMD_END_BIT_ERR    (1 << 3)
+#define ACMD_CRC_ERR        (1 << 2)
+#define ACMD_TIMEOUT_ERR    (1 << 1)
+#define ACMD12_NOT_EXEC     (1 << 0)
+
 typedef enum {
     EMMC_RESP_TYPE_NO_RESPONSE,
     EMMC_RESP_TYPE_R1,
@@ -215,12 +229,9 @@ static emmc_cmd_info cmds[] = {
         {EMMC_CMD_GO_IRQ_STATE, 40, EMMC_RESP_TYPE_R5, EMMC_DATA_NONE},
         {EMMC_CMD_LOCK_UNLOCK, 42, EMMC_RESP_TYPE_R1, EMMC_DATA_WRITE},
         {EMMC_CMD_APP_CMD, 55, EMMC_RESP_TYPE_R1, EMMC_DATA_NONE},
-        {EMMC_CMD_GEN_CMD, 56, EMMC_RESP_TYPE_R1, EMMC_DATA_READ_WRITE}, // TODO: Delete this mode
 };
 
 static uint32_t sec_count = 0;
-
-//void *(void *, const void *, long unsigned int)
 
 static void *memcpy(void *dest, const void *src, long unsigned int n) {
     char *csrc = (char *) src;
@@ -235,7 +246,10 @@ static void *memcpy(void *dest, const void *src, long unsigned int n) {
 
 static void emmc_sdclk_enable(uint8_t enable) {
     if (enable) {
-        EMMC_CLK_CTRL |= SDCLK_EN;
+        if (!(EMMC_CLK_CTRL & SDCLK_EN)) {
+            EMMC_CLK_CTRL |= SDCLK_EN;
+            delay_ms(1);
+        }
     } else {
         EMMC_CLK_CTRL &= ~SDCLK_EN;
     }
@@ -256,29 +270,18 @@ static inline void emmc_reset_cmd_dat() {
     while (EMMC_CLK_CTRL & (SW_RST_DAT | SW_RST_CMD));
 }
 
-void emmc_send_cmd(emmc_cmd_t cmd, uint32_t argument, uint32_t *rsp_buf) {
+int emmc_send_cmd(emmc_cmd_t cmd, uint32_t argument, uint32_t *rsp_buf) {
     emmc_cmd_info *cmd_info = &cmds[cmd];
 
-    print("emmc_send_cmd: index = ");
-    print_dec(cmd_info->index);
-    print("\r\n");
-
-    print("emmc_send_cmd: emmc_set_data_timeout\r\n");
     // Set maximum timeout value
     emmc_set_data_timeout(0xF);
 
     // Clear interrupts
     EMMC_INT_ST = 0xFFFFFFFF;
-    print("emmc_send_cmd: EMMC_INT_ST = ");
-    print_hex(EMMC_INT_ST);
-    print("\r\n");
     // Enable interrupts
     EMMC_INT_ST_EN = 0xFFFFFFFF;
     EMMC_INT_SIG_EN = 0xFFFFFFFF;
 
-    print("emmc_send_cmd: argument = ");
-    print_hex(argument);
-    print("\r\n");
     EMMC_ARGUMENT = argument;
     
     uint32_t tr_mode = 0;
@@ -286,7 +289,6 @@ void emmc_send_cmd(emmc_cmd_t cmd, uint32_t argument, uint32_t *rsp_buf) {
     tr_mode |= CMD_TYPE_NORMAL;
 
     if (cmd_info->data_type != EMMC_DATA_NONE) {
-        print("emmc_send_cmd: DATA_PRE_SEL\r\n");
         tr_mode |= DATA_PRE_SEL;
     }
 
@@ -315,18 +317,13 @@ void emmc_send_cmd(emmc_cmd_t cmd, uint32_t argument, uint32_t *rsp_buf) {
         case EMMC_RESP_TYPE_R5:
             tr_mode |= RESP_TYPE_SEL_48;
             break;
-        default:
-            print("emmc_send_cmd: unknown resp_type\r\n");
-            break;
     }
 
     if (cmd_info->index == 18 || cmd_info->index == 25) {
-        print("emmc_send_cmd: MULT_BLK_SEL\r\n");
         tr_mode |= MULT_BLK_SEL;
     }
 
     if (cmd_info->data_type == EMMC_DATA_READ) {
-        print("emmc_send_cmd: DATA_DIR_SEL\r\n");
         tr_mode |= DATA_DIR_SEL;
     }
 
@@ -335,10 +332,8 @@ void emmc_send_cmd(emmc_cmd_t cmd, uint32_t argument, uint32_t *rsp_buf) {
     
     EMMC_TR_MODE = tr_mode;
 
-    print("emmc_send_cmd: wait for CMD_COMPLETE\r\n");
     while (!(EMMC_INT_ST & CMD_COMPLETE));
     if (cmd_info->data_type != EMMC_DATA_NONE) {
-        print("emmc_send_cmd: wait for TR_COMPLETE\r\n");
         while (!(EMMC_INT_ST & TR_COMPLETE));
     }
     print("EMMC_INT_ST: ");
@@ -362,7 +357,7 @@ void emmc_send_cmd(emmc_cmd_t cmd, uint32_t argument, uint32_t *rsp_buf) {
     print("\r\n");
 
     if (rsp_buf == NULL)
-        return;
+        return 0;
     
     switch (cmd_info->resp_type) {
         case EMMC_RESP_TYPE_NO_RESPONSE:
@@ -388,28 +383,17 @@ void emmc_send_cmd(emmc_cmd_t cmd, uint32_t argument, uint32_t *rsp_buf) {
         case EMMC_RESP_TYPE_R5:
             ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
             break;
-        default:
-            print("emmc_send_cmd: unknown resp_type\r\n");
-            break;
     }
+
+    return 0;
 }
 
-void emmc_send_cmd_data(emmc_cmd_t cmd, uint32_t argument, uint8_t *blocks, uint32_t blk_size, uint32_t blk_count, uint32_t *rsp_buf) {
+int emmc_send_cmd_data(emmc_cmd_t cmd, uint32_t argument, uint8_t *blocks, uint32_t blk_size, uint32_t blk_count, uint32_t *rsp_buf) {
     EMMC_BLK_CNT = blk_count;
     EMMC_BLK_SIZE = blk_size & 0xFFF;
-    uint32_t addr_low = (uint32_t) ((uint64_t) blocks) & 0xFFFFFFFF;
-    uint32_t addr_high = (uint32_t) (((uint64_t) blocks) >> 32) & 0xFFFFFFFF;
-
-    print("emmc_send_cmd_data: EMMC_ADMA2_ADDR_L = ");
-    print_hex(addr_low);
-    print("\r\n");
-    print("emmc_send_cmd_data: EMMC_ADMA2_ADDR_H = ");
-    print_hex(addr_high);
-    print("\r\n");
-
-    EMMC_ADMA2_ADDR_L = addr_low;
-    EMMC_ADMA2_ADDR_H = addr_high;
-    emmc_send_cmd(cmd, argument, rsp_buf);
+    EMMC_ADMA2_ADDR_L = (uint32_t) ((uint64_t) blocks) & 0xFFFFFFFF;
+    EMMC_ADMA2_ADDR_H = (uint32_t) (((uint64_t) blocks) >> 32) & 0xFFFFFFFF;
+    return emmc_send_cmd(cmd, argument, rsp_buf);
 }
 
 void emmc_read() {
@@ -480,18 +464,21 @@ void emmc_read() {
     }
 }
 
-static void emmc_switch(uint8_t index, uint8_t value, uint32_t *rsp_buf) {
+static int emmc_switch(uint8_t index, uint8_t value, uint32_t *rsp_buf) {
+    int ret;
     uint32_t argument = 0;
 
     argument |= 3 << 24; // Access = Command set
     argument |= index << 16;
     argument |= value << 8;
 
-    print("emmc_switch: start!\r\n");
-    emmc_send_cmd(EMMC_CMD_SWITCH, argument, rsp_buf);
-    print_hex(EMMC_PRES_STATE);
-    print("\r\n");
+    ret = emmc_send_cmd(EMMC_CMD_SWITCH, argument, rsp_buf);
+    if (ret) {
+        return ret;
+    }
     while (!(EMMC_PRES_STATE & (1 << 20))); // Wait for not busy
+
+    return ret;
 }
 
 static void emmc_set_frequency(uint32_t frequency) {
@@ -511,90 +498,123 @@ static void emmc_set_frequency(uint32_t frequency) {
     EMMC_CLK_CTRL &= ~(0x3FF << 6);
     EMMC_CLK_CTRL |= ((freq_div >> 8) & 0x3) << 6;
     EMMC_CLK_CTRL |= (freq_div & 0xFF) << 8;
+
+    if (EMMC_CLK_CTRL & SDCLK_EN) {
+        delay_ms(1);
+    }
 }
 
-void emmc_init() {
-    print("SDHOST_Register start\r\n");
+int emmc_init() {
+    int ret;
+
     // SDHOST_Register start
     REG_AP_APB_APB_EB |= 1 << 25; // BIT_AP_APB_EMMC_EB
-
     emmc_sdclk_enable(0);
-
     REG_AP_APB_APB_RST |= 1 << 19; // BIT_AP_APB_EMMC_SOFT_RST
-    // TODO: delay_ms(1);
+    delay_ms(1);
     REG_AP_APB_APB_RST &= ~(1 << 19); // BIT_AP_APB_EMMC_SOFT_RST
     // SDHOST_Register end
 
-    print("SDIO_PowerCtl start\r\n");
     // SDIO_PowerCtl start
     // SDHOST_RST start
     EMMC_CLK_CTRL |= SW_RST_ALL;
     while (EMMC_CLK_CTRL & SW_RST_ALL);
     // SDHOST_RST end
 
-    print("SDHOST_ClkFreq_Set start\r\n");
     // SDHOST_ClkFreq_Set start
     REG_AP_CLK_CORE_CGM_EMMC_2X_CFG = 0x03; // AP_CLK_FREQ_384M
-
-    emmc_set_frequency(400000);
-
-    // TODO: Spec says to wait 1 second after setting the clock to 400Khz
-
-    print("SDHOST_InternalClk_Enable start\r\n");
+    emmc_set_frequency(400000); // 400Khz
     // SDHOST_InternalClk_Enable start
     EMMC_CLK_CTRL |= INT_CLK_EN;
     while (!(EMMC_CLK_CTRL & INT_CLK_STABLE));
     // SDHOST_InternalClk_Enable end
     emmc_sdclk_enable(1);
-
-    print("SDIO_Enable64Bit start\r\n");
     // SDIO_Enable64Bit start
-    EMMC_HOST_CTRL2 |= (1 << 29); // 64_BIT_ADDR_EN
+    EMMC_HOST_CTRL2 |= _64_BIT_ADDR_EN;
     // SDIO_Enable64Bit end
     // SDIO_SetDmaMode start
     EMMC_HOST_CTRL1 &= ~(0x18); // DMA_SEL(SDMA)
     // SDIO_SetDmaMode end
 
-    print("CARD_SDIO_InitCard start\r\n");
     // CARD_SDIO_InitCard start
-    emmc_send_cmd(EMMC_CMD_GO_IDLE_STATE, 0, NULL);
+    ret = emmc_send_cmd(EMMC_CMD_GO_IDLE_STATE, 0, NULL);
+    if (ret) {
+        print("emmc_init: GO_IDLE_STATE failed\r\n");
+        return ret;
+    }
 
     uint32_t op_cond_response;
     do {
-        print("emmc_init: emmc_send_cmd(SEND_OP_COND)\r\n");
-        emmc_send_cmd(EMMC_CMD_SEND_OP_COND, 0x00FF8000 | 0x40000000, &op_cond_response); // SECTOR_MODE = (1 << 30)
-        print("emmc_init: op_cond_response = ");
-        print_hex(op_cond_response);
-        print("\r\n");
+        ret = emmc_send_cmd(EMMC_CMD_SEND_OP_COND, (1 << 30) | 0x00FF8000, &op_cond_response); // SECTOR_MODE = (1 << 30)
+        if (ret) {
+            print("emmc_init: SEND_OP_COND failed\r\n");
+            return ret;
+        }
     } while (!(op_cond_response & (1 << 31)));
 
-    print("\r\nemmc_init: emmc_send_cmd(ALL_SEND_CID)\r\n");
-    emmc_send_cmd(EMMC_CMD_ALL_SEND_CID, 0, NULL);
+    ret = emmc_send_cmd(EMMC_CMD_ALL_SEND_CID, 0, NULL);
+    if (ret) {
+        print("emmc_init: ALL_SEND_CID failed\r\n");
+        return ret;
+    }
 
-    print("\r\nemmc_init: emmc_send_cmd(SEND_RELATIVE_ADDR)\r\n");
     emmc_send_cmd(EMMC_CMD_SET_RELATIVE_ADDR, 1 << 16, NULL);
+    if (ret) {
+        print("emmc_init: SET_RELATIVE_ADDR failed\r\n");
+        return ret;
+    }
 
     // TODO: Spec says to check here for the SPEC_VERS of the card with CMD9 before sending SEND_EXT_CSD
 
-    print("\r\nemmc_init: emmc_send_cmd(SELECT_DESELECT_CARD)\r\n");
-    emmc_send_cmd(EMMC_CMD_SELECT_DESELECT_CARD, 1 << 16, NULL);
+    ret = emmc_send_cmd(EMMC_CMD_SELECT_DESELECT_CARD, 1 << 16, NULL);
+    if (ret) {
+        print("emmc_init: SELECT_DESELECT_CARD failed\r\n");
+        return ret;
+    }
 
-    print("\r\nemmc_init: emmc_send_cmd(SEND_EXT_CSD)\r\n");
     uint8_t ext_csd[512];
-    emmc_send_cmd_data(EMMC_CMD_SEND_EXT_CSD, 0, ext_csd, 512, 1, NULL);
+    ret = emmc_send_cmd_data(EMMC_CMD_SEND_EXT_CSD, 0, ext_csd, 512, 1, NULL);
+    if (ret) {
+        print("emmc_init: SEND_EXT_CSD failed\r\n");
+        return ret;
+    }
 
     sec_count = ext_csd[212] | (ext_csd[213] << 8) | (ext_csd[214] << 16) | (ext_csd[215] << 24);
     print("emmc_init: sec_count = ");
     print_dec(sec_count);
     print("\r\n");
 
-    emmc_send_cmd(EMMC_CMD_SWITCH, 0x03B90100, NULL);
-    emmc_switch(185, 1, NULL); // HS_TIMING, 52Mhz
+    // TODO: Replace with emmc_switch
+    ret = emmc_send_cmd(EMMC_CMD_SWITCH, 0x03B90100, NULL);
+    if (ret) {
+        // TODO: Specify what was being set
+        print("emmc_init: SWITCH failed\r\n");
+        return ret;
+    }
+
+    ret = emmc_switch(185, 1, NULL); // HS_TIMING, 52Mhz
+    if (ret) {
+        // TODO: Specify what was being set
+        print("emmc_init: SWITCH failed\r\n");
+        return ret;
+    }
 
     emmc_set_frequency(48000000); // 48Mhz
 
-    emmc_switch(183, 2, NULL); // BUS_WIDTH, 8 bit
+    ret = emmc_switch(183, 2, NULL); // BUS_WIDTH, 8 bit
+    if (ret) {
+        // TODO: Specify what was being set
+        print("emmc_init: SWITCH failed\r\n");
+        return ret;
+    }
+
     EMMC_HOST_CTRL1 |= 1 << 5; // SD8_MODE
 
-    emmc_send_cmd(EMMC_CMD_SET_BLOCKLEN, 512, NULL);
+    ret = emmc_send_cmd(EMMC_CMD_SET_BLOCKLEN, 512, NULL);
+    if (ret) {
+        print("emmc_init: SET_BLOCKLEN failed\r\n");
+        return ret;
+    }
+
+    return ret;
 }

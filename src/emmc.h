@@ -43,8 +43,8 @@ typedef enum {
     EMMC_CMD_GEN_CMD,
 } emmc_cmd_t;
 
-void emmc_send_cmd(emmc_cmd_t cmd, uint32_t argument, uint32_t *rsp_buf);
-void emmc_send_cmd_data(emmc_cmd_t cmd, uint32_t argument, uint8_t *blocks, uint32_t blk_size, uint32_t blk_count, uint32_t *rsp_buf);
-void emmc_init();
+int emmc_send_cmd(emmc_cmd_t cmd, uint32_t argument, uint32_t *rsp_buf);
+int emmc_send_cmd_data(emmc_cmd_t cmd, uint32_t argument, uint8_t *blocks, uint32_t blk_size, uint32_t blk_count, uint32_t *rsp_buf);
+int emmc_init();
 
 #endif //EMMC_H
