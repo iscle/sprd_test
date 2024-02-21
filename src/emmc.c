@@ -1,9 +1,19 @@
 #include "emmc.h"
 #include <stddef.h>
+#include "efi.h"
 
+#define EMMC_DEBUG
+#ifdef EMMC_DEBUG
+void print_char(char c);
 extern void print_dec(uint32_t dec);
 extern void print_hex(uint32_t hex);
 extern void print(const char *s);
+#else
+#define print_char(x)
+#define print_dec(x)
+#define print_hex(x)
+#define print(x)
+#endif
 
 #define BASE_CLK    (384000000)
 
@@ -140,46 +150,6 @@ extern void print(const char *s);
 #define CMD_COMPLETE_EN     (1 << 0)
 
 typedef enum {
-    EMMC_CMD_GO_IDLE_STATE,
-    EMMC_CMD_SEND_OP_COND,
-    EMMC_CMD_ALL_SEND_CID,
-    EMMC_CMD_SET_RELATIVE_ADDR,
-    EMMC_CMD_SET_DSR,
-    EMMC_CMD_SLEEP_AWAKE,
-    EMMC_CMD_SWITCH,
-    EMMC_CMD_SELECT_DESELECT_CARD,
-    EMMC_CMD_SEND_EXT_CSD,
-    EMMC_CMD_SEND_CSD,
-    EMMC_CMD_SEND_CID,
-    EMMC_CMD_READ_DAT_UNTIL_STOP,
-    EMMC_CMD_STOP_TRANSMISSION,
-    EMMC_CMD_SEND_STATUS,
-    EMMC_CMD_BUSTEST_R,
-    EMMC_CMD_GO_INACTIVE_STATE,
-    EMMC_CMD_SET_BLOCKLEN,
-    EMMC_CMD_READ_SINGLE_BLOCK,
-    EMMC_CMD_READ_MULTIPLE_BLOCK,
-    EMMC_CMD_BUSTEST_W,
-    EMMC_CMD_WRITE_DAT_UNTIL_STOP,
-    EMMC_CMD_SET_BLOCK_COUNT,
-    EMMC_CMD_WRITE_BLOCK,
-    EMMC_CMD_WRITE_MULTIPLE_BLOCK,
-    EMMC_CMD_PROGRAM_CID,
-    EMMC_CMD_PROGRAM_CSD,
-    EMMC_CMD_SET_WRITE_PROT,
-    EMMC_CMD_CLR_WRITE_PROT,
-    EMMC_CMD_SEND_WRITE_PROT,
-    EMMC_CMD_ERASE_GROUP_START,
-    EMMC_CMD_ERASE_GROUP_END,
-    EMMC_CMD_ERASE,
-    EMMC_CMD_FAST_IO,
-    EMMC_CMD_GO_IRQ_STATE,
-    EMMC_CMD_LOCK_UNLOCK,
-    EMMC_CMD_APP_CMD,
-    EMMC_CMD_GEN_CMD,
-} emmc_cmd_t;
-
-typedef enum {
     EMMC_RESP_TYPE_NO_RESPONSE,
     EMMC_RESP_TYPE_R1,
     EMMC_RESP_TYPE_R1B,
@@ -248,7 +218,22 @@ static emmc_cmd_info cmds[] = {
         {EMMC_CMD_GEN_CMD, 56, EMMC_RESP_TYPE_R1, EMMC_DATA_READ_WRITE}, // TODO: Delete this mode
 };
 
-void emmc_sdclk_enable(uint8_t enable) {
+static uint32_t sec_count = 0;
+
+//void *(void *, const void *, long unsigned int)
+
+static void *memcpy(void *dest, const void *src, long unsigned int n) {
+    char *csrc = (char *) src;
+    char *cdest = (char *) dest;
+
+    for (int i = 0; i < n; i++) {
+        cdest[i] = csrc[i];
+    }
+
+    return dest;
+}
+
+static void emmc_sdclk_enable(uint8_t enable) {
     if (enable) {
         EMMC_CLK_CTRL |= SDCLK_EN;
     } else {
@@ -427,6 +412,74 @@ void emmc_send_cmd_data(emmc_cmd_t cmd, uint32_t argument, uint8_t *blocks, uint
     emmc_send_cmd(cmd, argument, rsp_buf);
 }
 
+void emmc_read() {
+    uint8_t buf[512];
+    // read efi gpt lba 1
+    emmc_send_cmd_data(EMMC_CMD_READ_SINGLE_BLOCK, 1, buf, 512, 1, NULL);
+
+    gpt_header_t gpt_header;
+    memcpy(&gpt_header, buf, sizeof(gpt_header));
+
+    if (gpt_header.signature != 0x5452415020494645) {
+        print("Invalid GPT signature\r\n");
+        return;
+    }
+
+    // partition count
+    print("gpt_header.number_of_partition_entries = ");
+    print_dec(gpt_header.number_of_partition_entries);
+    print("\r\n");
+
+    // partition entry size
+    print("gpt_header.size_of_partition_entry = ");
+    print_dec(gpt_header.size_of_partition_entry);
+    print("\r\n");
+
+    uint32_t entries_per_block = 512 / gpt_header.size_of_partition_entry;
+    for (uint32_t i = 0; i < gpt_header.number_of_partition_entries; i += entries_per_block) {
+        uint32_t lba = gpt_header.partition_entry_lba;
+        lba += i * gpt_header.size_of_partition_entry / 512;
+        emmc_send_cmd_data(EMMC_CMD_READ_SINGLE_BLOCK, lba, buf, 512, 1, NULL);
+
+        for (uint32_t j = 0; j < entries_per_block; j++) {
+            gpt_entry_t gpt_entry;
+            memcpy(&gpt_entry, buf + j * gpt_header.size_of_partition_entry, sizeof(gpt_entry));
+
+            if (gpt_entry.starting_lba == 0) {
+                continue;
+            }
+
+            print("Partition ");
+            print_dec(i + j);
+            print(":\r\n");
+            print("  Partition type GUID: ");
+            for (int k = 0; k < 16; k++) {
+                print_hex(gpt_entry.partition_type_guid[k]);
+            }
+            print("\r\n");
+            print("  Unique partition GUID: ");
+            for (int k = 0; k < 16; k++) {
+                print_hex(gpt_entry.unique_partition_guid[k]);
+            }
+            print("\r\n");
+            print("  Starting LBA: ");
+            print_dec(gpt_entry.starting_lba);
+            print("\r\n");
+            print("  Ending LBA: ");
+            print_dec(gpt_entry.ending_lba);
+            print("\r\n");
+            print("  Attributes: ");
+            print_hex(gpt_entry.attributes);
+            print("\r\n");
+            print("  Partition name: ");
+            for (int k = 0; k < 36; k++) {
+                print_char(gpt_entry.partition_name[k]);
+            }
+            print("\r\n");
+        }
+    }
+}
+
 static void emmc_switch(uint8_t index, uint8_t value, uint32_t *rsp_buf) {
     uint32_t argument = 0;
 
@@ -530,7 +583,7 @@ void emmc_init() {
     uint8_t ext_csd[512];
     emmc_send_cmd_data(EMMC_CMD_SEND_EXT_CSD, 0, ext_csd, 512, 1, NULL);
 
-    uint32_t sec_count = ext_csd[212] | (ext_csd[213] << 8) | (ext_csd[214] << 16) | (ext_csd[215] << 24);
+    sec_count = ext_csd[212] | (ext_csd[213] << 8) | (ext_csd[214] << 16) | (ext_csd[215] << 24);
     print("emmc_init: sec_count = ");
     print_dec(sec_count);
     print("\r\n");
@@ -544,6 +597,4 @@ void emmc_init() {
     EMMC_HOST_CTRL1 |= 1 << 5; // SD8_MODE
 
     emmc_send_cmd(EMMC_CMD_SET_BLOCKLEN, 512, NULL);
-
-    return;
 }

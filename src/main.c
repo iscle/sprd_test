@@ -53,6 +53,8 @@ void print(const char *s) {
     }
 }
 
+extern void emmc_read();
+
 void main() {
 //    char text[] = "Hello, World!\r\n";
 //    const uint8_t *receive_buffer;
@@ -60,6 +62,9 @@ void main() {
     print("Calling emmc_init\r\n");
     emmc_init();
     print("emmc_init returned\r\n");
+    print("Calling emmc_read\r\n");
+    emmc_read();
+    print("emmc_read returned\r\n");
 
     while (1);
 
