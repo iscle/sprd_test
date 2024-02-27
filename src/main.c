@@ -55,30 +55,46 @@ void print(const char *s) {
 
 extern void emmc_read();
 
+#define VERSION_STRING "Iscle's DA 1.0.0"
+
 void main() {
-//    char text[] = "Hello, World!\r\n";
-//    const uint8_t *receive_buffer;
+    int ret;
 
-    print("Calling emmc_init\r\n");
-    emmc_init();
-    print("emmc_init returned\r\n");
-    print("Calling emmc_read\r\n");
-    emmc_read();
-    print("emmc_read returned\r\n");
+    usb_rx_init();
+    usb_send_version(VERSION_STRING, sizeof(VERSION_STRING));
 
-    while (1);
+    while (1) {
+        usb_cmd_t cmd;
+        uint16_t data_length;
+        void *data;
 
-//    usb_rx_init();
-//
-//    while (1) {
-//        print(text);
-//        usb_write((uint32_t *) text, sizeof(text));
-//        uint16_t received = usb_read(&receive_buffer);
-//        // For some reason, adding the following code crashes the entire program (not even the first "print" statement in the loop is reached)
-////        if (received > 0) {
-////            print("Received data\r\n");
-////        } else {
-////            print("No data received\r\n");
-////        }
-//    }
+        ret = usb_read(&cmd, &data_length, &data);
+        if (ret) {
+            print("usb_read failed\r\n");
+            continue;
+        }
+
+        switch (cmd) {
+            case CMD_EMMC_INIT:
+                print("CMD_EMMC_INIT\r\n");
+                ret = emmc_init();
+                print("emmc_init ret: ");
+                print_dec(ret);
+                print("\r\n");
+                if (ret) {
+                    usb_send_status(STATUS_ERROR);
+                } else {
+                    usb_send_status(STATUS_OK);
+                }
+                break;
+            case CMD_EMMC_READ:
+                print("CMD_EMMC_READ\r\n");
+                emmc_read();
+                usb_send_status(STATUS_OK);
+                break;
+            default:
+                print("unknown cmd\r\n");
+                break;
+        }
+    }
 }
