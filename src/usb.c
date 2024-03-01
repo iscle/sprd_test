@@ -7,7 +7,7 @@
 #define USB_DMA_CHN_LEN(x)          (*(volatile uint32_t *) (USB_BASE + 0x1C10 + (((x) - 1) * 0x20)))
 #define USB_DMA_CHN_LLIST_PTR(x)    (*(volatile uint32_t *) (USB_BASE + 0x1C14 + (((x) - 1) * 0x20)))
 
-#define MAX_USB_LENGTH 2048
+#define MAX_USB_LENGTH 1024
 
 typedef struct {
     uint32_t addr;
@@ -152,4 +152,27 @@ int usb_send_status(usb_status_t status) {
 
 int usb_send_version(char *version, uint16_t length) {
     return usb_write(CMD_VERSION, length, version);
+}
+
+int usb_send_read_partition_data_start(uint64_t length) {
+    uint8_t buf[8];
+
+    buf[0] = (length >> 56) & 0xFF;
+    buf[1] = (length >> 48) & 0xFF;
+    buf[2] = (length >> 40) & 0xFF;
+    buf[3] = (length >> 32) & 0xFF;
+    buf[4] = (length >> 24) & 0xFF;
+    buf[5] = (length >> 16) & 0xFF;
+    buf[6] = (length >> 8) & 0xFF;
+    buf[7] = length & 0xFF;
+
+    return usb_write(CMD_EMMC_READ_PARTITION_DATA_START, sizeof(buf), buf);
+}
+
+int usb_send_read_partition_data(uint16_t length, const void *data) {
+    return usb_write(CMD_EMMC_READ_PARTITION_DATA, length, data);
+}
+
+int usb_send_read_partition_data_end() {
+    return usb_write(CMD_EMMC_READ_PARTITION_DATA_END, 0, NULL);
 }

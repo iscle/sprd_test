@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include "efi.h"
 #include "timer.h"
+#include <string.h>
 
 #define EMMC_DEBUG
 #ifdef EMMC_DEBUG
@@ -233,17 +234,6 @@ static emmc_cmd_info cmds[] = {
 
 static uint32_t sec_count = 0;
 
-static void *memcpy(void *dest, const void *src, long unsigned int n) {
-    char *csrc = (char *) src;
-    char *cdest = (char *) dest;
-
-    for (int i = 0; i < n; i++) {
-        cdest[i] = csrc[i];
-    }
-
-    return dest;
-}
-
 static void emmc_sdclk_enable(uint8_t enable) {
     if (enable) {
         if (!(EMMC_CLK_CTRL & SDCLK_EN)) {
@@ -375,11 +365,14 @@ int emmc_send_cmd(emmc_cmd_t cmd, uint32_t argument, uint32_t *rsp_buf) {
 }
 
 int emmc_send_cmd_data(emmc_cmd_t cmd, uint32_t argument, uint8_t *blocks, uint32_t blk_size, uint32_t blk_count, uint32_t *rsp_buf) {
+    print("emmc_send_cmd_data start\r\n");
     EMMC_BLK_CNT = blk_count;
     EMMC_BLK_SIZE = blk_size & 0xFFF;
     EMMC_ADMA2_ADDR_L = (uint32_t) ((uint64_t) blocks) & 0xFFFFFFFF;
     EMMC_ADMA2_ADDR_H = (uint32_t) (((uint64_t) blocks) >> 32) & 0xFFFFFFFF;
-    return emmc_send_cmd(cmd, argument, rsp_buf);
+    int ret = emmc_send_cmd(cmd, argument, rsp_buf);
+    print("emmc_send_cmd_data end\r\n");
+    return ret;
 }
 
 void emmc_read() {
@@ -387,9 +380,11 @@ void emmc_read() {
     // read efi gpt lba 1
     emmc_send_cmd_data(EMMC_CMD_READ_SINGLE_BLOCK, 1, buf, 512, 1, NULL);
 
+    print("GPT Header copy\r\n");
     gpt_header_t gpt_header;
     memcpy(&gpt_header, buf, sizeof(gpt_header));
 
+    print("Checking GPT signature");
     if (gpt_header.signature != 0x5452415020494645) {
         print("Invalid GPT signature\r\n");
         return;
@@ -448,6 +443,67 @@ void emmc_read() {
             print("\r\n");
         }
     }
+}
+
+int emmc_read_partition(char *partition, void (*start_cb)(uint64_t len), void (*data_cb)(const void *buf, uint16_t len), void (*end_cb)()) {
+    uint8_t buf[512];
+    // read efi gpt lba 1
+    emmc_send_cmd_data(EMMC_CMD_READ_SINGLE_BLOCK, 1, buf, 512, 1, NULL);
+
+    gpt_header_t gpt_header;
+    memcpy(&gpt_header, buf, sizeof(gpt_header));
+
+    if (gpt_header.signature != 0x5452415020494645) {
+        print("Invalid GPT signature\r\n");
+        return -1;
+    }
+
+    // partition count
+    print("gpt_header.number_of_partition_entries = ");
+    print_dec(gpt_header.number_of_partition_entries);
+    print("\r\n");
+
+    // partition entry size
+    print("gpt_header.size_of_partition_entry = ");
+    print_dec(gpt_header.size_of_partition_entry);
+    print("\r\n");
+
+    uint32_t entries_per_block = 512 / gpt_header.size_of_partition_entry;
+    for (uint32_t i = 0; i < gpt_header.number_of_partition_entries; i += entries_per_block) {
+        uint32_t lba = gpt_header.partition_entry_lba;
+        lba += i * gpt_header.size_of_partition_entry / 512;
+        emmc_send_cmd_data(EMMC_CMD_READ_SINGLE_BLOCK, lba, buf, 512, 1, NULL);
+
+        for (uint32_t j = 0; j < entries_per_block; j++) {
+            gpt_entry_t gpt_entry;
+            memcpy(&gpt_entry, buf + j * gpt_header.size_of_partition_entry, sizeof(gpt_entry));
+
+            if (gpt_entry.starting_lba == 0) {
+                continue;
+            }
+
+            char name[36];
+            for (int k = 0; k < 36; k++) {
+                name[k] = gpt_entry.partition_name[k];
+            }
+            name[35] = '\0';
+
+            if (strcmp(name, partition) == 0) {
+                uint64_t lba = gpt_entry.starting_lba;
+                uint64_t len = (gpt_entry.ending_lba - gpt_entry.starting_lba + 1) * 512;
+                start_cb(len);
+                while (lba <= gpt_entry.ending_lba) {
+                    emmc_send_cmd_data(EMMC_CMD_READ_SINGLE_BLOCK, lba, buf, 512, 1, NULL);
+                    data_cb(buf, 512);
+                    lba++;
+                }
+                end_cb();
+                return 0;
+            }
+        }
+    }
+
+    return -1;
 }
 
 static int emmc_switch(uint8_t index, uint8_t value, uint32_t *rsp_buf) {

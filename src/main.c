@@ -57,6 +57,18 @@ extern void emmc_read();
 
 #define VERSION_STRING "Iscle's DA 1.0.0"
 
+static void emmc_read_partition_data_start(uint64_t len) {
+    usb_send_read_partition_data_start(len);
+}
+
+static void emmc_read_partition_data(const void *data, uint16_t len) {
+    usb_send_read_partition_data(len, data);
+}
+
+static void emmc_read_partition_data_end() {
+    usb_send_read_partition_data_end();
+}
+
 void main() {
     int ret;
 
@@ -87,10 +99,18 @@ void main() {
                     usb_send_status(STATUS_OK);
                 }
                 break;
-            case CMD_EMMC_READ:
+            case CMD_EMMC_READ_PARTITION:
                 print("CMD_EMMC_READ\r\n");
                 emmc_read();
-                usb_send_status(STATUS_OK);
+//                ret = emmc_read_partition("recovery", emmc_read_partition_data_start, emmc_read_partition_data, emmc_read_partition_data_end);
+                print("emmc_read_partition ret: ");
+                print_dec(ret);
+                print("\r\n");
+                if (ret) {
+                    usb_send_status(STATUS_ERROR);
+                } else {
+                    usb_send_status(STATUS_OK);
+                }
                 break;
             default:
                 print("unknown cmd\r\n");
