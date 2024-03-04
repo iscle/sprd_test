@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define EMMC_BLOCK_SIZE 512
+
 typedef enum {
     EMMC_CMD_GO_IDLE_STATE,
     EMMC_CMD_SEND_OP_COND,
@@ -43,9 +45,7 @@ typedef enum {
     EMMC_CMD_GEN_CMD,
 } emmc_cmd_t;
 
-int emmc_send_cmd(emmc_cmd_t cmd, uint32_t argument, uint32_t *rsp_buf);
-int emmc_send_cmd_data(emmc_cmd_t cmd, uint32_t argument, uint8_t *blocks, uint32_t blk_size, uint32_t blk_count, uint32_t *rsp_buf);
 int emmc_init();
-int emmc_read_partition(char *partition, void (*start_cb)(uint64_t len), void (*data_cb)(const void *buf, uint16_t len), void (*end_cb)());
+int emmc_read_single_block(uint32_t lba, void *data);
 
 #endif //EMMC_H

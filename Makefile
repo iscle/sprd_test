@@ -10,7 +10,7 @@ OBJECTS := $(SOURCES:.c=.o) src/start.o
 TARGET := app_with_gap.bin
 
 # Flags
-CFLAGS := -c -nostdlib -nostartfiles
+CFLAGS := -c -nostdlib -nostartfiles -ffreestanding
 LDFLAGS := -T src/linker.ld
 DDFLAGS := if=/dev/zero bs=1 count=512 of=gap.bin
 

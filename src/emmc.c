@@ -1,6 +1,5 @@
 #include "emmc.h"
 #include <stddef.h>
-#include "efi.h"
 #include "timer.h"
 #include <string.h>
 
@@ -332,178 +331,46 @@ int emmc_send_cmd(emmc_cmd_t cmd, uint32_t argument, uint32_t *rsp_buf) {
 
     emmc_reset_cmd_dat();
 
-    if (rsp_buf == NULL)
-        return 0;
-    
-    switch (cmd_info->resp_type) {
-        case EMMC_RESP_TYPE_NO_RESPONSE:
-            break;
-        case EMMC_RESP_TYPE_R1:
-            ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
-            break;
-        case EMMC_RESP_TYPE_R1B:
-            ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
-            break;
-        case EMMC_RESP_TYPE_R2:
-            ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
-            ((uint32_t *) rsp_buf)[1] = EMMC_RESP2;
-            ((uint32_t *) rsp_buf)[2] = EMMC_RESP4;
-            ((uint32_t *) rsp_buf)[3] = EMMC_RESP6;
-            break;
-        case EMMC_RESP_TYPE_R3:
-            ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
-            break;
-        case EMMC_RESP_TYPE_R4:
-            ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
-            break;
-        case EMMC_RESP_TYPE_R5:
-            ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
-            break;
+    if (rsp_buf != NULL) {
+        switch (cmd_info->resp_type) {
+            case EMMC_RESP_TYPE_NO_RESPONSE:
+                break;
+            case EMMC_RESP_TYPE_R1:
+                ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
+                break;
+            case EMMC_RESP_TYPE_R1B:
+                ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
+                break;
+            case EMMC_RESP_TYPE_R2:
+                ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
+                ((uint32_t *) rsp_buf)[1] = EMMC_RESP2;
+                ((uint32_t *) rsp_buf)[2] = EMMC_RESP4;
+                ((uint32_t *) rsp_buf)[3] = EMMC_RESP6;
+                break;
+            case EMMC_RESP_TYPE_R3:
+                ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
+                break;
+            case EMMC_RESP_TYPE_R4:
+                ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
+                break;
+            case EMMC_RESP_TYPE_R5:
+                ((uint32_t *) rsp_buf)[0] = EMMC_RESP0;
+                break;
+        }
     }
 
     return 0;
 }
 
 int emmc_send_cmd_data(emmc_cmd_t cmd, uint32_t argument, uint8_t *blocks, uint32_t blk_size, uint32_t blk_count, uint32_t *rsp_buf) {
-    print("emmc_send_cmd_data start\r\n");
+//    print("emmc_send_cmd_data start\r\n");
     EMMC_BLK_CNT = blk_count;
     EMMC_BLK_SIZE = blk_size & 0xFFF;
     EMMC_ADMA2_ADDR_L = (uint32_t) ((uint64_t) blocks) & 0xFFFFFFFF;
     EMMC_ADMA2_ADDR_H = (uint32_t) (((uint64_t) blocks) >> 32) & 0xFFFFFFFF;
     int ret = emmc_send_cmd(cmd, argument, rsp_buf);
-    print("emmc_send_cmd_data end\r\n");
+//    print("emmc_send_cmd_data end\r\n");
     return ret;
-}
-
-void emmc_read() {
-    uint8_t buf[512];
-    // read efi gpt lba 1
-    emmc_send_cmd_data(EMMC_CMD_READ_SINGLE_BLOCK, 1, buf, 512, 1, NULL);
-
-    print("GPT Header copy\r\n");
-    gpt_header_t gpt_header;
-    memcpy(&gpt_header, buf, sizeof(gpt_header));
-
-    print("Checking GPT signature");
-    if (gpt_header.signature != 0x5452415020494645) {
-        print("Invalid GPT signature\r\n");
-        return;
-    }
-
-    // partition count
-    print("gpt_header.number_of_partition_entries = ");
-    print_dec(gpt_header.number_of_partition_entries);
-    print("\r\n");
-
-    // partition entry size
-    print("gpt_header.size_of_partition_entry = ");
-    print_dec(gpt_header.size_of_partition_entry);
-    print("\r\n");
-
-    uint32_t entries_per_block = 512 / gpt_header.size_of_partition_entry;
-    for (uint32_t i = 0; i < gpt_header.number_of_partition_entries; i += entries_per_block) {
-        uint32_t lba = gpt_header.partition_entry_lba;
-        lba += i * gpt_header.size_of_partition_entry / 512;
-        emmc_send_cmd_data(EMMC_CMD_READ_SINGLE_BLOCK, lba, buf, 512, 1, NULL);
-
-        for (uint32_t j = 0; j < entries_per_block; j++) {
-            gpt_entry_t gpt_entry;
-            memcpy(&gpt_entry, buf + j * gpt_header.size_of_partition_entry, sizeof(gpt_entry));
-
-            if (gpt_entry.starting_lba == 0) {
-                continue;
-            }
-
-            print("Partition ");
-            print_dec(i + j);
-            print(":\r\n");
-            print("  Partition type GUID: ");
-            for (int k = 0; k < 16; k++) {
-                print_hex(gpt_entry.partition_type_guid[k]);
-            }
-            print("\r\n");
-            print("  Unique partition GUID: ");
-            for (int k = 0; k < 16; k++) {
-                print_hex(gpt_entry.unique_partition_guid[k]);
-            }
-            print("\r\n");
-            print("  Starting LBA: ");
-            print_dec(gpt_entry.starting_lba);
-            print("\r\n");
-            print("  Ending LBA: ");
-            print_dec(gpt_entry.ending_lba);
-            print("\r\n");
-            print("  Attributes: ");
-            print_hex(gpt_entry.attributes);
-            print("\r\n");
-            print("  Partition name: ");
-            for (int k = 0; k < 36; k++) {
-                print_char(gpt_entry.partition_name[k]);
-            }
-            print("\r\n");
-        }
-    }
-}
-
-int emmc_read_partition(char *partition, void (*start_cb)(uint64_t len), void (*data_cb)(const void *buf, uint16_t len), void (*end_cb)()) {
-    uint8_t buf[512];
-    // read efi gpt lba 1
-    emmc_send_cmd_data(EMMC_CMD_READ_SINGLE_BLOCK, 1, buf, 512, 1, NULL);
-
-    gpt_header_t gpt_header;
-    memcpy(&gpt_header, buf, sizeof(gpt_header));
-
-    if (gpt_header.signature != 0x5452415020494645) {
-        print("Invalid GPT signature\r\n");
-        return -1;
-    }
-
-    // partition count
-    print("gpt_header.number_of_partition_entries = ");
-    print_dec(gpt_header.number_of_partition_entries);
-    print("\r\n");
-
-    // partition entry size
-    print("gpt_header.size_of_partition_entry = ");
-    print_dec(gpt_header.size_of_partition_entry);
-    print("\r\n");
-
-    uint32_t entries_per_block = 512 / gpt_header.size_of_partition_entry;
-    for (uint32_t i = 0; i < gpt_header.number_of_partition_entries; i += entries_per_block) {
-        uint32_t lba = gpt_header.partition_entry_lba;
-        lba += i * gpt_header.size_of_partition_entry / 512;
-        emmc_send_cmd_data(EMMC_CMD_READ_SINGLE_BLOCK, lba, buf, 512, 1, NULL);
-
-        for (uint32_t j = 0; j < entries_per_block; j++) {
-            gpt_entry_t gpt_entry;
-            memcpy(&gpt_entry, buf + j * gpt_header.size_of_partition_entry, sizeof(gpt_entry));
-
-            if (gpt_entry.starting_lba == 0) {
-                continue;
-            }
-
-            char name[36];
-            for (int k = 0; k < 36; k++) {
-                name[k] = gpt_entry.partition_name[k];
-            }
-            name[35] = '\0';
-
-            if (strcmp(name, partition) == 0) {
-                uint64_t lba = gpt_entry.starting_lba;
-                uint64_t len = (gpt_entry.ending_lba - gpt_entry.starting_lba + 1) * 512;
-                start_cb(len);
-                while (lba <= gpt_entry.ending_lba) {
-                    emmc_send_cmd_data(EMMC_CMD_READ_SINGLE_BLOCK, lba, buf, 512, 1, NULL);
-                    data_cb(buf, 512);
-                    lba++;
-                }
-                end_cb();
-                return 0;
-            }
-        }
-    }
-
-    return -1;
 }
 
 static int emmc_switch(uint8_t index, uint8_t value, uint32_t *rsp_buf) {
@@ -652,11 +519,26 @@ int emmc_init() {
 
     EMMC_HOST_CTRL1 |= 1 << 5; // SD8_MODE
 
-    ret = emmc_send_cmd(EMMC_CMD_SET_BLOCKLEN, 512, NULL);
+    ret = emmc_send_cmd(EMMC_CMD_SET_BLOCKLEN, EMMC_BLOCK_SIZE, NULL);
     if (ret) {
         print("emmc_init: SET_BLOCKLEN failed\r\n");
         return ret;
     }
+
+    return ret;
+}
+
+int emmc_read_single_block(uint32_t lba, void *data) {
+    uint8_t buf[512];
+    int ret;
+
+    ret = emmc_send_cmd_data(EMMC_CMD_READ_SINGLE_BLOCK, lba, buf, EMMC_BLOCK_SIZE, 1, NULL);
+    if (ret) {
+        print("emmc_read_single_block: READ_SINGLE_BLOCK failed\r\n");
+        return ret;
+    }
+
+    memcpy(data, buf, EMMC_BLOCK_SIZE);
 
     return ret;
 }

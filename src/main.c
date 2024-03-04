@@ -1,19 +1,16 @@
 #include <stdint.h>
 #include "usb.h"
 #include "emmc.h"
+#include "endianness.h"
 
-#define REG32(x) (*(volatile unsigned int *) (x))
-
-#define UART1_BASE          0x70100000
-#define UART1_TX_BUF_ADDR   (UART1_BASE)
-#define UART1_TX_BUF_CNT    ((REG32(UART1_BASE + 0xC) >> 8) & 0xff)
+#define UART1_BASE      0x70100000
+#define UART1_TXD       (*(volatile uint32_t *) (UART1_BASE + 0x0))
+#define UART1_STS1      (*(volatile uint32_t *) (UART1_BASE + 0xC))
+#define UART1_TXF_CNT   ((UART1_STS1 >> 8) & 0xFF)
 
 void print_char(char c) {
-    // wait until uart1 tx fifo empty
-    while (UART1_TX_BUF_CNT != 0);
-
-    // put out char by uart1 tx fifo
-    REG32(UART1_TX_BUF_ADDR) = c;
+    while (UART1_TXF_CNT != 0);
+    UART1_TXD = c;
 }
 
 void print_dec(uint32_t dec) {
@@ -53,34 +50,20 @@ void print(const char *s) {
     }
 }
 
-extern void emmc_read();
-
 #define VERSION_STRING "Iscle's DA 1.0.0"
 
-static void emmc_read_partition_data_start(uint64_t len) {
-    usb_send_read_partition_data_start(len);
-}
-
-static void emmc_read_partition_data(const void *data, uint16_t len) {
-    usb_send_read_partition_data(len, data);
-}
-
-static void emmc_read_partition_data_end() {
-    usb_send_read_partition_data_end();
-}
-
-void main() {
+__attribute__((noreturn)) void main() {
     int ret;
 
     usb_rx_init();
     usb_send_version(VERSION_STRING, sizeof(VERSION_STRING));
 
     while (1) {
-        usb_cmd_t cmd;
+        uint16_t cmd;
         uint16_t data_length;
-        void *data;
+        void *data = usb_get_data();
 
-        ret = usb_read(&cmd, &data_length, &data);
+        ret = usb_read(&cmd, &data_length);
         if (ret) {
             print("usb_read failed\r\n");
             continue;
@@ -89,28 +72,35 @@ void main() {
         switch (cmd) {
             case CMD_EMMC_INIT:
                 print("CMD_EMMC_INIT\r\n");
+
                 ret = emmc_init();
-                print("emmc_init ret: ");
-                print_dec(ret);
-                print("\r\n");
                 if (ret) {
+                    print("emmc_init failed\r\n");
                     usb_send_status(STATUS_ERROR);
-                } else {
-                    usb_send_status(STATUS_OK);
+                    break;
                 }
+
+                usb_send_status(STATUS_OK);
                 break;
-            case CMD_EMMC_READ_PARTITION:
-                print("CMD_EMMC_READ\r\n");
-                emmc_read();
-//                ret = emmc_read_partition("recovery", emmc_read_partition_data_start, emmc_read_partition_data, emmc_read_partition_data_end);
-                print("emmc_read_partition ret: ");
-                print_dec(ret);
-                print("\r\n");
-                if (ret) {
-                    usb_send_status(STATUS_ERROR);
-                } else {
-                    usb_send_status(STATUS_OK);
+            case CMD_EMMC_READ_SINGLE_BLOCK:
+                print("CMD_EMMC_READ_SINGLE_BLOCK\r\n");
+
+                if (data_length != 4) {
+                    print("data_length != 4\r\n");
+                    usb_send_status(STATUS_ERROR_DATA_LENGTH);
+                    break;
                 }
+
+                uint32_t lba = READ_BE32(data);
+
+                ret = emmc_read_single_block(lba, data);
+                if (ret) {
+                    print("emmc_read_single_block failed\r\n");
+                    usb_send_status(STATUS_ERROR);
+                    break;
+                }
+
+                usb_send_emmc_read_single_block(EMMC_BLOCK_SIZE);
                 break;
             default:
                 print("unknown cmd\r\n");
