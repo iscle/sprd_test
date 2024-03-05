@@ -1,6 +1,7 @@
 #include "usb.h"
 #include <string.h>
 #include "endianness.h"
+#include "uart.h"
 
 #define USB_BASE                0x5FFF0000
 #define DMA_BASE                (USB_BASE + 0x1000)
@@ -21,8 +22,6 @@ static __attribute__((aligned(8))) usb_ll_t usb_ll_tx;
 
 #define USB_DATA_OFFSET 4
 static __attribute__((aligned(64))) uint8_t usb_buf[USB_MAX_LENGTH];
-
-extern void print(const char *s);
 
 static uint16_t crc16(const void *data, size_t length) {
     const uint8_t *d = data;
@@ -155,6 +154,11 @@ void usb_send_status(uint16_t status) {
 void usb_send_version(char *version, uint16_t length) {
     memcpy(usb_get_data(), version, length);
     usb_write(CMD_VERSION, length);
+}
+
+void usb_send_emmc_sec_count(uint32_t sec_count) {
+    WRITE_BE32(usb_get_data(), sec_count);
+    usb_write(CMD_EMMC_GET_SEC_COUNT, 4);
 }
 
 void usb_send_emmc_read_single_block(uint16_t block_size) {

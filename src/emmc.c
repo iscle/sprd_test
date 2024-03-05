@@ -2,19 +2,7 @@
 #include <stddef.h>
 #include "timer.h"
 #include <string.h>
-
-#define EMMC_DEBUG
-#ifdef EMMC_DEBUG
-void print_char(char c);
-extern void print_dec(uint32_t dec);
-extern void print_hex(uint32_t hex);
-extern void print(const char *s);
-#else
-#define print_char(x)
-#define print_dec(x)
-#define print_hex(x)
-#define print(x)
-#endif
+#include "uart.h"
 
 #define BASE_CLK    (384000000)
 
@@ -373,7 +361,7 @@ int emmc_send_cmd_data(emmc_cmd_t cmd, uint32_t argument, uint8_t *blocks, uint3
     return ret;
 }
 
-static int emmc_switch(uint8_t index, uint8_t value, uint32_t *rsp_buf) {
+int emmc_switch(uint8_t index, uint8_t value, uint32_t *rsp_buf) {
     int ret;
     uint32_t argument = 0;
 
@@ -528,6 +516,10 @@ int emmc_init() {
     return ret;
 }
 
+uint32_t emmc_get_sec_count() {
+    return sec_count;
+}
+
 int emmc_read_single_block(uint32_t lba, void *data) {
     uint8_t buf[512];
     int ret;
@@ -539,6 +531,18 @@ int emmc_read_single_block(uint32_t lba, void *data) {
     }
 
     memcpy(data, buf, EMMC_BLOCK_SIZE);
+
+    return ret;
+}
+
+int emmc_write_block(uint32_t lba, void *data) {
+    int ret;
+
+    ret = emmc_send_cmd_data(EMMC_CMD_WRITE_BLOCK, lba, data, EMMC_BLOCK_SIZE, 1, NULL);
+    if (ret) {
+        print("emmc_write_block: WRITE_BLOCK failed\r\n");
+        return ret;
+    }
 
     return ret;
 }

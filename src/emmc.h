@@ -45,7 +45,10 @@ typedef enum {
     EMMC_CMD_GEN_CMD,
 } emmc_cmd_t;
 
+int emmc_switch(uint8_t index, uint8_t value, uint32_t *rsp_buf);
 int emmc_init();
+uint32_t emmc_get_sec_count();
 int emmc_read_single_block(uint32_t lba, void *data);
+int emmc_write_block(uint32_t lba, void *data);
 
 #endif //EMMC_H
