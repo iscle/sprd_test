@@ -1,4 +1,5 @@
 .section .text._start
+.global _start
 
 _start:
     /* Set up the stack pointer */
