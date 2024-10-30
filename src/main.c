@@ -102,6 +102,94 @@ __attribute__((noreturn)) void main() {
                 usb_send_status(STATUS_OK);
                 break;
             }
+            case CMD_READ_REG8: {
+                if (data_length != 8) {
+                    usb_send_status(STATUS_ERROR_DATA_LENGTH);
+                    break;
+                }
+
+                volatile uint8_t *addr = READ_BE64(data);
+                usb_send_reg8(*addr);
+                break;
+            }
+            case CMD_WRITE_REG8: {
+                if (data_length != 9) {
+                    usb_send_status(STATUS_ERROR_DATA_LENGTH);
+                    break;
+                }
+
+                volatile uint8_t *addr = READ_BE64(data);
+                uint8_t val = ((uint8_t *) data)[8];
+                *addr = val;
+                usb_send_status(STATUS_OK);
+                break;
+            }
+            case CMD_READ_REG16: {
+                if (data_length != 8) {
+                    usb_send_status(STATUS_ERROR_DATA_LENGTH);
+                    break;
+                }
+
+                volatile uint16_t *addr = READ_BE64(data);
+                usb_send_reg16(*addr);
+                break;
+            }
+            case CMD_WRITE_REG16: {
+                if (data_length != 10) {
+                    usb_send_status(STATUS_ERROR_DATA_LENGTH);
+                    break;
+                }
+
+                volatile uint16_t *addr = READ_BE64(data);
+                uint16_t val = READ_BE16(data + 8);
+                *addr = val;
+                usb_send_status(STATUS_OK);
+                break;
+            }
+            case CMD_READ_REG32: {
+                if (data_length != 8) {
+                    usb_send_status(STATUS_ERROR_DATA_LENGTH);
+                    break;
+                }
+
+                volatile uint32_t *addr = READ_BE64(data);
+                usb_send_reg32(*addr);
+                break;
+            }
+            case CMD_WRITE_REG32: {
+                if (data_length != 12) {
+                    usb_send_status(STATUS_ERROR_DATA_LENGTH);
+                    break;
+                }
+
+                volatile uint32_t *addr = READ_BE64(data);
+                uint32_t val = READ_BE32(data + 8);
+                *addr = val;
+                usb_send_status(STATUS_OK);
+                break;
+            }
+            case CMD_READ_REG64: {
+                if (data_length != 8) {
+                    usb_send_status(STATUS_ERROR_DATA_LENGTH);
+                    break;
+                }
+
+                volatile uint64_t *addr = READ_BE64(data);
+                usb_send_reg64(*addr);
+                break;
+            }
+            case CMD_WRITE_REG64: {
+                if (data_length != 16) {
+                    usb_send_status(STATUS_ERROR_DATA_LENGTH);
+                    break;
+                }
+
+                volatile uint64_t *addr = READ_BE64(data);
+                uint64_t val = READ_BE64(data + 8);
+                *addr = val;
+                usb_send_status(STATUS_OK);
+                break;
+            }
         }
     }
 }

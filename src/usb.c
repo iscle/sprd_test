@@ -164,3 +164,23 @@ void usb_send_emmc_sec_count(uint32_t sec_count) {
 void usb_send_emmc_read_single_block(uint16_t block_size) {
     usb_write(CMD_EMMC_READ_SINGLE_BLOCK, block_size);
 }
+
+void usb_send_reg8(uint8_t val) {
+    ((uint8_t *) usb_get_data())[0] = val;
+    usb_write(CMD_READ_REG8, 1);
+}
+
+void usb_send_reg16(uint16_t val) {
+    WRITE_BE16(usb_get_data(), val);
+    usb_write(CMD_READ_REG16, 2);
+}
+
+void usb_send_reg32(uint32_t val) {
+    WRITE_BE32(usb_get_data(), val);
+    usb_write(CMD_READ_REG32, 4);
+}
+
+void usb_send_reg64(uint64_t val) {
+    WRITE_BE64(usb_get_data(), val);
+    usb_write(CMD_READ_REG64, 8);
+}
