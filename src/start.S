@@ -1,24 +1,19 @@
-#define FDL1_STACK 0x3000
+.section .text._start
 
-.global _start
 _start:
-    b reset
+    /* Set up the stack pointer */
+    ldr x0, =_stack_end /* Load the address of the end of the stack */
+    mov sp, x0          /* Set the stack pointer */
 
-reset:
-    // Set stack pointer
-    ldr x0, =FDL1_STACK
-    mov sp, x0
+    /* Zero initialize the .bss section */
+    ldr x0, =_sbss      /* Start of .bss in RAM */
+    ldr x1, =_ebss      /* End of .bss in RAM */
+zero_bss:
+    cmp x0, x1          /* Check if end of .bss is reached */
+    b.ge end_zero_bss   /* If we've reached the end, skip zeroing */
+    str xzr, [x0], #8   /* Store zero (XZR) and increment pointer by 8 bytes */
+    b zero_bss          /* Repeat until entire .bss is zeroed */
 
-    // Clear .bss section
-    ldr x0, =_sbss // Start address of .bss
-    ldr x1, =_ebss // End address of .bss
-    mov x2, #0
-clear_bss:
-    cmp x0, x1     // Compare pointers to check if we've reached the end of .bss
-    b.ge done_bss  // If x0 >= x1, we are done
-    str x2, [x0], #8 // Store 0 (from x2) at [x0] and increment x0 by 8 bytes
-    b clear_bss    // Repeat until whole .bss is cleared
-
-done_bss:
-    // Jump to main function
-    b main
+end_zero_bss:
+    /* Jump to main */
+    b main              /* Branch to main function */
