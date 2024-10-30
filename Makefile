@@ -23,13 +23,9 @@ $(TARGET): $(OBJECTS)
 	$(DD) $(DDFLAGS)
 	cat gap.bin app.bin > $(TARGET)
 
-# To compile any .c to .o
-%.o: %.c
+# To compile any .s and .c to .o
+%.o: %.s %.c
 	$(CC) $(CFLAGS) -o $@ $<
-
-# Special rule for start.S
-start.o: src/start.S
-	$(CC) $(CFLAGS) -o src/start.o src/start.S
 
 # Clean rule
 clean:
