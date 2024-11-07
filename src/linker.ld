@@ -1,8 +1,8 @@
 /* Define memory regions */
 MEMORY
 {
-    /* UMS512 loads to 0x5500, but has a 0x200 byte header */
-    RAM (rwx) : ORIGIN = 0x5700, LENGTH = 16K /* Length is not exact */
+    /* UMS512 loads payloads to 0x5500, but has a 0x200 byte header */
+    RAM (rwx) : ORIGIN = 0x5700, LENGTH = 32K /* Length is not exact */
 }
 
 ENTRY(_start)
@@ -34,11 +34,6 @@ SECTIONS
         *(.bss*)                        /* Uninitialized data */
         _ebss = .;                      /* End of BSS section */
     } > RAM
-
-    /* Stack section */
-    .stack (NOLOAD) :
-    {
-        _stack_start = 0x3400;          /* Start of stack */
-        _stack_end = 0x4000;            /* End of stack */
-    } > RAM
 }
+
+_stack_end = 0x4000; /* End of stack */
